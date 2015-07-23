@@ -10,43 +10,6 @@ http://www.dagurobot.com/goods.php?id=135
  - Read Battery voltage
  - Read DC motor current draw
  
-I use both quick2wire and smbus.
-smbus to send command
-quick2wire to read status
-I can not get both functions operate on one of the librarys.
-Smbus can not read multipple bytes from the bus without sending a register command.
-And I did not get quick2wire to work when write to the slave.
-
-Dependencies
-------------
-1. Enable I2C on the Raspberry PI
-The file /etc/modules shall have the following lines
-i2c-bcm2708
-i2c-dev
-
-2. Change the baudrate on The Raspberry Pi
-Create a new file: /etc/modprobe.d/i2c.conf
-And add:
-options i2c_bcm2708 baudrate=9600
-
-3. Install smbus:
-sudo apt-get install python-smbus
-
-4. Install quick2wire:
-Add the following to /etc/apt/sources.list
-deb http://dist.quick2wire.com/raspbian wheezy main 
-deb-src http://dist.quick2wire.com/raspbian wheezy main
-
-sudo apt-get update
-sudo apt-get install install quick2wire-gpio-admin quick2wire-python3-api
-sed -i '/^assert sys.version_info.major/d' /usr/lib/python3/dist-packages/quick2wire/i2c.py
-
-5. If you use python2 add the following to /etc/profile.d/pythonpath.sh
-export PYTHONPATH=/usr/lib/python3/dist-packages
-
-NOTE! When you execute this from the command line it execute outside of steelsquid daemon, and may interrupt for example the LCD, DAC, ADC or extra GPIO.
-It is meant to be used inside the steelsquid daemon (see http://www.steelsquid.org/steelsquid-kiss-os-development)
- 
 @organization: Steelsquid
 @author: Andreas Nilsson
 @contact: steelsquid@gmail.com
@@ -56,54 +19,48 @@ It is meant to be used inside the steelsquid daemon (see http://www.steelsquid.o
 
 
 import sys
-#If the python3 packages not is in path (quick2wire)
-sys.path.append("/usr/lib/python3/dist-packages")
 import threading
 import time
 import smbus
-import quick2wire.i2c as i2c
-from quick2wire.i2c import I2CMaster, writing_bytes, reading
 
 
 TREX_ADDRESS = 0x07
 
-i2c_write_bus = smbus.SMBus(1)
-i2c_read_bus = i2c.I2CMaster()
+i2c = smbus.SMBus(1)
 trex_lock = threading.Lock()
-trex_package = [None] * 26
-trex_voltage_f = 8
+trex_packet = [None] * 26
 motor_last_change = 0
 
 def __trex_reset():
     '''
     Reset the trex controller byte array
     '''
-    trex_package[0] = 6    # PWMfreq
-    trex_package[1] = 0    # Left speed high byte
-    trex_package[2] = 0    # Left Speed low byte
-    trex_package[3] = 0    # Left brake
-    trex_package[4] = 0    # Right Speed high byte
-    trex_package[5] = 0    # Right Speed low byte
-    trex_package[6] = 0    # Right brake
-    trex_package[7] = 5    # Servo 1 hight byte
-    trex_package[8] = 220  # Servo 1 low byte
-    trex_package[9] = 0    # Servo 2 hight byte
-    trex_package[10] = 0   # Servo 2 low byte
-    trex_package[11] = 0   # Servo 3 hight byte
-    trex_package[12] = 0   # Servo 3 low byte
-    trex_package[13] = 0   # Servo 4 hight byte
-    trex_package[14] = 0   # Servo 4 low byte
-    trex_package[15] = 0   # Servo 5 hight byte
-    trex_package[16] = 0   # Servo 5 low byte
-    trex_package[17] = 0   # Servo 6 hight byte
-    trex_package[18] = 0   # Servo 6 low byte
-    trex_package[19] = 50  # Devibrate
-    trex_package[20] = 0   # Impact sensitivity high byte
-    trex_package[21] = 50  # Impact sensitivity low byte
-    trex_package[22] = 2   # Battery voltage high byte
-    trex_package[23] = 38  # Battery voltage low byte
-    trex_package[24] = 7   # I2C slave address
-    trex_package[25] = 0   # I2C clock frequency
+    trex_packet[0] = 6    # PWMfreq
+    trex_packet[1] = 0    # Left speed high byte
+    trex_packet[2] = 0    # Left Speed low byte
+    trex_packet[3] = 0    # Left brake
+    trex_packet[4] = 0    # Right Speed high byte
+    trex_packet[5] = 0    # Right Speed low byte
+    trex_packet[6] = 0    # Right brake
+    trex_packet[7] = 5    # Servo 1 hight byte
+    trex_packet[8] = 220  # Servo 1 low byte
+    trex_packet[9] = 0    # Servo 2 hight byte
+    trex_packet[10] = 0   # Servo 2 low byte
+    trex_packet[11] = 0   # Servo 3 hight byte
+    trex_packet[12] = 0   # Servo 3 low byte
+    trex_packet[13] = 0   # Servo 4 hight byte
+    trex_packet[14] = 0   # Servo 4 low byte
+    trex_packet[15] = 0   # Servo 5 hight byte
+    trex_packet[16] = 0   # Servo 5 low byte
+    trex_packet[17] = 0   # Servo 6 hight byte
+    trex_packet[18] = 0   # Servo 6 low byte
+    trex_packet[19] = 50  # Devibrate
+    trex_packet[20] = 0   # Impact sensitivity high byte
+    trex_packet[21] = 50  # Impact sensitivity low byte
+    trex_packet[22] = 840   # Battery voltage high byte
+    trex_packet[23] = 600  # Battery voltage low byte
+    trex_packet[24] = 7   # I2C slave address
+    trex_packet[25] = 0   # I2C clock frequency
 
 __trex_reset()
 
@@ -120,8 +77,8 @@ def __trex_status():
     Read status from trex
     Return as a byte array
     '''
-    answer = i2c_read_bus.transaction(i2c.reading(TREX_ADDRESS, 24))[0]
-    return map(ord, answer)
+    answer = i2c.read_i2c_block_data(TREX_ADDRESS, 240, 24)
+    return answer
 
 
 def __hight_byte(integer):
@@ -153,7 +110,7 @@ def trex_reset():
     trex_lock.acquire()
     try:
         __trex_reset()
-        i2c_write_bus.write_i2c_block_data(TREX_ADDRESS, 15, trex_package)
+        i2c.write_i2c_block_data(TREX_ADDRESS, 15, trex_packet)
     finally:
         trex_lock.release()
 
@@ -163,7 +120,7 @@ def trex_motor(left, right):
     Set speed of the dc motors
     left and right can have the folowing values: -255 to 255
     -255 = Full speed astern
-    0 = stop
+    0 = No power, no brakes.
     255 = Full speed ahead
     '''
     global motor_last_change
@@ -172,14 +129,27 @@ def trex_motor(left, right):
     right = int(right)
     trex_lock.acquire()
     try:
-        trex_package[1] = __hight_byte(left)
-        trex_package[2] = __low_byte(left)
-        trex_package[4] = __hight_byte(right)
-        trex_package[5] = __low_byte(right)
-        i2c_write_bus.write_i2c_block_data(TREX_ADDRESS, 15, trex_package)
+        trex_packet[1] = __hight_byte(left)
+        trex_packet[2] = __low_byte(left)
+        trex_packet[4] = __hight_byte(right)
+        trex_packet[5] = __low_byte(right)
+        i2c.write_i2c_block_data(TREX_ADDRESS, 15, trex_packet)
     finally:
         trex_lock.release()
 
+def trex_brake(left, right):
+    '''
+    Engage motor brakes.
+    '''
+    left = int(left)
+    right = int(right)
+    try:
+       trex_lock.acquire()
+       trex_packet[3] = left
+       trex_packet[6] = right
+       i2c.write_i2c_block_data(TREX_ADDRESS, 15, trex_packet)
+    finally:
+       trex_lock.release()
 
 def trex_servo(servo, position):
     '''
@@ -191,11 +161,11 @@ def trex_servo(servo, position):
     position = int(position)
     trex_lock.acquire()
     try:
-        servo_hight = (servo*2) + 5
+        servo_high = (servo*2) + 5
         servo_low = (servo*2) + 6
-        trex_package[servo_hight] = __hight_byte(position)
-        trex_package[servo_low] = __low_byte(position)
-        i2c_write_bus.write_i2c_block_data(TREX_ADDRESS, 15, trex_package)
+        trex_packet[servo_high] = __hight_byte(position)
+        trex_packet[servo_low] = __low_byte(position)
+        i2c.write_i2c_block_data(TREX_ADDRESS, 15, trex_packet)
     finally:
         trex_lock.release()
 
@@ -210,7 +180,8 @@ def trex_status():
     Return tuple: battery_voltage, left_motor_current, right_motor_current, accelerometer_x, accelerometer_y, accelerometer_z, impact_x, impact_y, impact_z
     '''
     b = __trex_status()
-    battery_voltage =  __hight_low_int(b[2], b[3]) + trex_voltage_f
+    previous_cmd_status = b[1]
+    battery_voltage =  __hight_low_int(b[2], b[3])
     left_motor_current =  __hight_low_int(b[4], b[5])
     right_motor_current =  __hight_low_int(b[8], b[9])
     accelerometer_x =  __hight_low_int(b[12], b[13])
@@ -219,15 +190,7 @@ def trex_status():
     impact_x =  __hight_low_int(b[18], b[19])
     impact_y =  __hight_low_int(b[20], b[21])
     impact_z =  __hight_low_int(b[22], b[23])
-    return battery_voltage, left_motor_current, right_motor_current, accelerometer_x, accelerometer_y, accelerometer_z, impact_x, impact_y, impact_z
-
-
-def trex_voltage_fix(value):
-    '''
-    My trex shows 1 volt wrong for some reason
-    1v = 100
-    '''
-    trex_voltage_f = value
+    return previous_cmd_status, battery_voltage, left_motor_current, right_motor_current, accelerometer_x, accelerometer_y, accelerometer_z, impact_x, impact_y, impact_z
 
 
 def help():
@@ -258,22 +221,29 @@ if __name__ == '__main__':
     else:
         if sys.argv[1] == "motor":
             trex_motor(sys.argv[2], sys.argv[3])
-            print "Motor speed left: " + sys.argv[2]
-            print "Motor speed right: " + sys.argv[3]
+            print("Motor speed left: " + sys.argv[2])
+            print("Motor speed right: " + sys.argv[3])
+        elif sys.argv[1] == "brake":
+            trex_brake(sys.argv[2], sys.argv[3])
+            print("Left brake: " + sys.argv[2])
+            print("Right brake: " + sys.argv[3])
         elif sys.argv[1] == "servo":
             trex_servo(sys.argv[2], sys.argv[3])
-            print "Servo number: " + sys.argv[2]
-            print "Position: " + sys.argv[3]
+            print("Servo number: " + sys.argv[2])
+            print("Position: " + sys.argv[3])
         elif sys.argv[1] == "status":
-            battery_voltage, left_motor_current, right_motor_current, accelerometer_x, accelerometer_y, accelerometer_z, impact_x, impact_y, impact_z = trex_status()
-            print "Battery voltage: " + str(battery_voltage)
-            print "Left motor current: " + str(left_motor_current)
-            print "Right motor current: " + str(right_motor_current)
-            print "Accelerometer X-axis: " + str(accelerometer_x)
-            print "Accelerometer Y-axis : " + str(accelerometer_y)
-            print "Accelerometer Z-axis : " + str(accelerometer_z)
-            print "Impact X-axis: " + str(impact_x)
-            print "Impact Y-axis: " + str(impact_y)
-            print "Impact Z-axis: " + str(impact_z)
+            previous_cmd_status, battery_voltage, left_motor_current, right_motor_current, accelerometer_x, accelerometer_y, accelerometer_z, impact_x, impact_y, impact_z = trex_status()
+            print("Previous command packet: " + str(previous_cmd_status))
+            print("Battery voltage: " + str(battery_voltage))
+            print("Left motor current: " + str(left_motor_current))
+            print("Right motor current: " + str(right_motor_current))
+            print("Accelerometer X-axis: " + str(accelerometer_x))
+            print("Accelerometer Y-axis : " + str(accelerometer_y))
+            print("Accelerometer Z-axis : " + str(accelerometer_z))
+            print("Impact X-axis: " + str(impact_x))
+            print("Impact Y-axis: " + str(impact_y))
+            print("Impact Z-axis: " + str(impact_z))
         else:
             help()
+
+    
