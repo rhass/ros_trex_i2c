@@ -59,7 +59,7 @@ def __trex_reset():
     trex_packet[21] = 50  # Impact sensitivity low byte
     trex_packet[22] = 840   # Battery voltage high byte
     trex_packet[23] = 600  # Battery voltage low byte
-    trex_packet[24] = 7   # I2C slave address
+    trex_packet[24] = 7   # I2C subordinate address
     trex_packet[25] = 0   # I2C clock frequency
 
 __trex_reset()
